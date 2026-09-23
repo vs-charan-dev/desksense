@@ -175,3 +175,7 @@ class CalibrationWizard:
             "has_profile": self.manager.profile is not None,
             "profile": self.manager.profile.to_dict() if self.manager.profile else None
         }
+
+    def tick(self, dt: float = 0.0) -> WizardState:
+        """Alias for update() to support tick-based caller loops."""
+        return self.update()

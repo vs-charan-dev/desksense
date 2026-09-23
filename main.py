@@ -80,7 +80,7 @@ def main():
 
             # Tick calibration wizard if active
             if app.wizard.state in (WizardState.COUNTDOWN, WizardState.CAPTURING):
-                app.wizard.tick(dt)
+                app.wizard.update()
 
             # Read frame from camera
             success, frame_rgb = camera.read_frame()
