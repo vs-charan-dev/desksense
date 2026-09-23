@@ -87,10 +87,16 @@ class DatabaseEngine:
 
     def __init__(self, db_path: str = "desksense.db"):
         self.db_path = db_path
-        # Ensure parent directory exists if path includes a directory
-        parent = os.path.dirname(os.path.abspath(db_path))
-        if parent and not os.path.exists(parent):
-            os.makedirs(parent, exist_ok=True)
+        self._shared_conn: Optional[sqlite3.Connection] = None
+        if db_path == ":memory:":
+            self._shared_conn = sqlite3.connect(":memory:")
+            self._shared_conn.row_factory = sqlite3.Row
+            self._shared_conn.execute("PRAGMA foreign_keys = ON;")
+        else:
+            # Ensure parent directory exists if path includes a directory
+            parent = os.path.dirname(os.path.abspath(db_path))
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent, exist_ok=True)
 
         self._active_posture_interval: Optional[Dict[str, Any]] = None
         self._active_attention_interval: Optional[Dict[str, Any]] = None
@@ -98,6 +104,8 @@ class DatabaseEngine:
 
     def get_connection(self) -> sqlite3.Connection:
         """Returns SQLite connection with row factory enabled."""
+        if self._shared_conn is not None:
+            return self._shared_conn
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")

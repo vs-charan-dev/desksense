@@ -221,8 +221,8 @@ class TestPhase0Automated(unittest.TestCase):
         
         discovered_media = []
         for root, dirs, files in os.walk(workspace):
-            # Skip virtual environments or node_modules if any
-            if ".venv" in root or "node_modules" in root or ".git" in root:
+            # Skip virtual environments, node_modules, git, and UI/tauri static app icons
+            if any(part in root for part in (".venv", "node_modules", ".git", "src-tauri", "ui")):
                 continue
             for f in files:
                 ext = os.path.splitext(f)[1].lower()
