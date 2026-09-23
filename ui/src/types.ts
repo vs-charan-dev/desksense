@@ -76,6 +76,9 @@ export interface DashboardData {
   phone_dashboard?: PhoneDashboardSummary;
   summary?: DailySummaryData;
   category_rules?: CategoryRule[];
+  performance?: AdaptivePerfStatus;
+  multi_monitor?: MultiMonitorStatus;
+  startup_enabled?: boolean;
 }
 
 export interface WidgetConfig {
@@ -159,4 +162,23 @@ export interface DailySummaryData {
   };
   insights: string[];
   wording_disclaimer: string;
+}
+
+export interface AdaptivePerfStatus {
+  power_source: 'AC' | 'BATTERY';
+  profile: string;
+  target_fps: number;
+  phone_scan_fps: number;
+  ui_animations_enabled: boolean;
+  cpu_usage_pct: number;
+  is_thermal_throttled: boolean;
+  user_present: boolean;
+  is_away_sustained: boolean;
+}
+
+export interface MultiMonitorStatus {
+  monitors: string[];
+  has_left: boolean;
+  has_right: boolean;
+  has_up: boolean;
 }

@@ -91,6 +91,15 @@ def main():
 
             app.set_camera_availability(True)
 
+            # Phase 6 Adaptive Performance Target
+            target_fps = app.adaptive_perf.target_fps
+            camera.target_fps = int(target_fps)
+            loop_delay = max(0.01, (1.0 / target_fps) - dt)
+
+            # Update presence for away throttle
+            is_present = (res.get("presence") == "PRESENT") if "res" in locals() else True
+            app.adaptive_perf.update_presence(is_present)
+
             # Run vision inference
             res = vision_core.process_frame(frame_rgb, camera_available=True)
             poll_res = app.activity_tracker.poll()

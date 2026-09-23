@@ -9,6 +9,7 @@ import { AlertBannerList } from './components/AlertBannerList';
 import { TimelineVisualizer } from './components/TimelineVisualizer';
 import { FocusDashboard } from './components/FocusDashboard';
 import { CategorySettingsModal } from './components/CategorySettingsModal';
+import { PrivacySettingsModal } from './components/PrivacySettingsModal';
 import { DashboardData, CalibrationWizardStatus, WidgetConfig } from './types';
 
 const DEFAULT_DASHBOARD: DashboardData = {
@@ -73,6 +74,7 @@ export const App: React.FC = () => {
   const [wizard, setWizard] = useState<CalibrationWizardStatus>(DEFAULT_WIZARD);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   const [widgetConfig, setWidgetConfig] = useState<WidgetConfig>(DEFAULT_DASHBOARD.widget);
 
   const fetchDashboard = useCallback(async () => {
@@ -251,6 +253,50 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleToggleMonitor = async (pos: string) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8765/api/settings/monitor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position: pos, action: 'toggle' }),
+      });
+      if (res.ok) fetchDashboard();
+    } catch {}
+  };
+
+  const handleToggleStartup = async (enabled: boolean) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8765/api/settings/startup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      if (res.ok) fetchDashboard();
+    } catch {}
+  };
+
+  const handleApplyRetention = async (policy: string) => {
+    try {
+      await fetch('http://127.0.0.1:8765/api/privacy/retention', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ policy }),
+      });
+      fetchDashboard();
+    } catch {}
+  };
+
+  const handleWipeData = async () => {
+    try {
+      await fetch('http://127.0.0.1:8765/api/privacy/wipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed: true }),
+      });
+      fetchDashboard();
+    } catch {}
+  };
+
   const handleUpdateWidgetConfig = async (newConfig: Partial<WidgetConfig>) => {
     const updated = { ...widgetConfig, ...newConfig };
     setWidgetConfig(updated);
@@ -321,6 +367,12 @@ export const App: React.FC = () => {
             >
               <span>App Categories</span>
             </button>
+            <button
+              onClick={() => setIsPrivacyModalOpen(true)}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs transition flex items-center gap-1.5"
+            >
+              <span>Privacy & Displays</span>
+            </button>
           </div>
           <div className="text-right">
             <span>Global Hotkey: </span>
@@ -346,6 +398,19 @@ export const App: React.FC = () => {
         onFinish={handleFinishCalibration}
         onRetry={handleRetryCalibration}
         onCancel={handleCancelCalibration}
+      />
+
+      {/* Privacy Settings Modal */}
+      <PrivacySettingsModal
+        isOpen={isPrivacyModalOpen}
+        onClose={() => setIsPrivacyModalOpen(false)}
+        startupEnabled={data.startup_enabled}
+        hasLeftMonitor={data.multi_monitor?.has_left}
+        hasRightMonitor={data.multi_monitor?.has_right}
+        onToggleMonitor={handleToggleMonitor}
+        onToggleStartup={handleToggleStartup}
+        onApplyRetention={handleApplyRetention}
+        onWipeData={handleWipeData}
       />
 
       {/* Category Settings Modal */}

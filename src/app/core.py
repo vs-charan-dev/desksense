@@ -1,3 +1,8 @@
+from src.system.adaptive_perf import AdaptivePerformanceManager, PowerSource
+from src.system.multi_monitor import MultiMonitorConfig
+from src.system.weekly_trends import WeeklyTrendsEngine
+from src.system.privacy_manager import PrivacyManager
+from src.system.startup import WindowsStartupManager
 from src.system.app_classifier import AppClassifier
 from src.system.focus_tracker import FocusTracker
 from src.system.timeline import TimelineBuilder
@@ -155,6 +160,13 @@ class DeskSenseApp:
         self.app_classifier = AppClassifier(db=self.db)
         self.focus_tracker = FocusTracker(db=self.db)
         self.daily_summary_engine = DailySummaryEngine()
+
+        # Phase 6: Adaptive Performance, Multi-Monitor, Trends, Privacy & Startup
+        self.adaptive_perf = AdaptivePerformanceManager(time_func=self.time_func)
+        self.multi_monitor = MultiMonitorConfig()
+        self.weekly_trends_engine = WeeklyTrendsEngine()
+        self.privacy_manager = PrivacyManager(db=self.db)
+        self.startup_manager = WindowsStartupManager()
 
 
     # ---------------- Window & Lifecycle Management (P3-01) ----------------
@@ -534,6 +546,9 @@ class DeskSenseApp:
             },
             "summary": summary_payload,
             "category_rules": category_rules,
+            "performance": self.adaptive_perf.to_dict(),
+            "multi_monitor": self.multi_monitor.to_dict(),
+            "startup_enabled": self.startup_manager.is_startup_enabled(),
             "window_visible": self.window_visible,
             "active_view": self.active_view,
             "widget": self.widget.to_dict(),

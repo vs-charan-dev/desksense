@@ -76,6 +76,37 @@ class DeskSenseAPIHandler(BaseHTTPRequestHandler):
             dash = app.get_dashboard_data()
             self._send_json(dash.get("summary", {}))
 
+        elif path == "/api/privacy/export/json":
+            json_data = app.privacy_manager.export_data_json()
+            body = json_data.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Disposition", "attachment; filename=desksense_export.json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        elif path == "/api/privacy/export/csv":
+            csv_data = app.privacy_manager.export_data_csv()
+            body = csv_data.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/csv")
+            self.send_header("Content-Disposition", "attachment; filename=desksense_intervals.csv")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        elif path == "/api/trends/weekly":
+            # Return weekly trend calculations
+            curr_days = app.db.get_work_state_intervals()
+            wow = app.weekly_trends_engine.calculate_week_over_week([], [])
+            insights = app.weekly_trends_engine.generate_trend_insights(wow)
+            self._send_json({"trends": wow, "insights": insights})
+
         elif path == "/api/health":
             self._send_json({"status": "HEALTHY", "is_running": app.is_running})
 
@@ -176,6 +207,38 @@ class DeskSenseAPIHandler(BaseHTTPRequestHandler):
             rule_type = post_data.get("rule_type", "process")
             success = app.app_classifier.delete_rule(pattern, rule_type, rule_id=rule_id)
             self._send_json({"status": "ok" if success else "not_found", "rules": app.db.get_category_rules()})
+
+        elif path == "/api/privacy/retention":
+            policy = post_data.get("policy", "30_days")
+            res = app.privacy_manager.apply_retention_policy(policy)
+            self._send_json(res)
+
+        elif path == "/api/privacy/wipe":
+            confirmed = bool(post_data.get("confirmed", False))
+            success = app.privacy_manager.wipe_activity_data(confirmed=confirmed)
+            self._send_json({"wiped": success})
+
+        elif path == "/api/settings/startup":
+            enabled = bool(post_data.get("enabled", False))
+            if enabled:
+                app.startup_manager.enable_startup()
+            else:
+                app.startup_manager.disable_startup()
+            self._send_json({"startup_enabled": app.startup_manager.is_startup_enabled()})
+
+        elif path == "/api/settings/monitor":
+            position = post_data.get("position", "")
+            action = post_data.get("action", "toggle")
+            if action == "add":
+                app.multi_monitor.add_monitor(position)
+            elif action == "remove":
+                app.multi_monitor.remove_monitor(position)
+            elif action == "toggle":
+                if app.multi_monitor.is_monitor_configured(position):
+                    app.multi_monitor.remove_monitor(position)
+                else:
+                    app.multi_monitor.add_monitor(position)
+            self._send_json(app.multi_monitor.to_dict())
 
         elif path == "/api/window/close":
             # Intercept close
