@@ -20,6 +20,11 @@ from src.app.widget import StatusWidgetState
 from src.app.tray import TrayController, TrayCommand
 from src.app.hotkey import HotkeyManager
 from src.app.dashboard import DashboardService
+from src.vision.phone_fusion import PhoneUsageFusion, PhoneSession
+from src.vision.phone_scheduler import PhoneInferenceScheduler
+from src.system.work_state import WorkStateEngine, WorkState
+from src.system.break_tracker import BreakTracker, BreakRecord
+from src.system.focus_mode import FocusModeController
 
 
 class MonitoringState(str, Enum):
@@ -129,7 +134,46 @@ class DeskSenseApp:
         # Active settings view toggle
         self.active_view = "dashboard"
 
+        # Phase 4 Signal Fusion, Phone & Break Trackers
+        self.phone_fusion = PhoneUsageFusion(
+            on_session_closed=self._on_phone_session_closed
+        )
+        self.phone_scheduler = PhoneInferenceScheduler()
+        self.work_state_engine = WorkStateEngine()
+        self.break_tracker = BreakTracker(
+            on_break_completed=self._on_break_completed,
+            on_sedentary_reminder=self._on_sedentary_reminder
+        )
+        self.focus_mode = FocusModeController(phone_fusion=self.phone_fusion)
+        self.current_work_state = WorkState.UNKNOWN
+
+
     # ---------------- Window & Lifecycle Management (P3-01) ----------------
+
+    def _on_phone_session_closed(self, session: PhoneSession) -> None:
+        session_id = self.session_manager.current_session['id'] if self.session_manager.current_session else None
+        self.db.log_phone_session(
+            start_time=session.start_time,
+            end_time=session.end_time,
+            duration=session.duration,
+            confidence=session.confidence,
+            session_id=session_id
+        )
+        if self.focus_mode.is_active:
+            self.focus_mode.record_phone_interruption()
+
+    def _on_break_completed(self, brk: BreakRecord) -> None:
+        session_id = self.session_manager.current_session['id'] if self.session_manager.current_session else None
+        self.db.log_break(
+            start_time=brk.start_time,
+            end_time=brk.end_time,
+            duration=brk.duration,
+            break_type=brk.break_type,
+            session_id=session_id
+        )
+
+    def _on_sedentary_reminder(self) -> None:
+        self.notifier.dispatch("SEDENTARY_ALERT")
 
     def show_dashboard(self) -> None:
         """Brings dashboard to foreground / makes window visible."""
@@ -164,6 +208,8 @@ class DeskSenseApp:
 
         # Close session
         self.session_manager.end_session()
+        self.phone_fusion.flush(self.time_func())
+        self.work_state_engine.flush(self.time_func())
 
         # Flush database
         self.db.close()
@@ -283,6 +329,95 @@ class DeskSenseApp:
             session_id=session_id
         )
 
+        # Update Phase 4 state engines
+        is_head_down = (attention_state.upper() == "DOWN")
+        self.phone_scheduler.update_suspicion(head_down=is_head_down)
+        phone_active = self.phone_fusion.process_frame(
+            timestamp=now,
+            phone_detected=False,
+            phone_confidence=0.0,
+            head_down=is_head_down,
+            present=(attention_state.upper() != "AWAY")
+        )
+        self.break_tracker.update(timestamp=now, present=(attention_state.upper() != "AWAY"))
+        self.current_work_state = self.work_state_engine.update(
+            timestamp=now,
+            present=(attention_state.upper() != "AWAY"),
+            attention=attention_state,
+            app_category="neutral",
+            idle_seconds=0.0,
+            phone_active=phone_active,
+            signals_reliable=self.camera_available
+        )
+        self.current_activity = self.current_work_state.value
+        if self.focus_mode.is_active:
+            self.focus_mode.update(now)
+
+    def record_observation_extended(
+        self,
+        posture_state: str,
+        attention_state: str,
+        confidence: float = 1.0,
+        active_app: Optional[str] = None,
+        phone_detected: bool = False,
+        phone_confidence: float = 0.0,
+        head_down: bool = False,
+        hand_near_phone: bool = False,
+        present: bool = True,
+        idle_seconds: float = 0.0,
+        app_category: str = "neutral"
+    ) -> None:
+        """Extended observation ingestion handling vision, phone fusion, and work states."""
+        self.check_pause_expiration()
+
+        if self.monitoring_state != MonitoringState.MONITORING:
+            return
+
+        now = self.time_func()
+        self.current_posture = posture_state
+        self.current_attention = attention_state
+        if active_app:
+            self.active_app = active_app
+
+        session_id = self.session_manager.current_session["id"] if self.session_manager.current_session else None
+
+        self.db.record_posture_sample(
+            posture_state=posture_state,
+            confidence=confidence,
+            timestamp=now,
+            session_id=session_id
+        )
+        self.db.record_attention_sample(
+            attention_state=attention_state,
+            confidence=confidence,
+            timestamp=now,
+            session_id=session_id
+        )
+
+        is_head_down = head_down or (attention_state.upper() == "DOWN")
+        self.phone_scheduler.update_suspicion(head_down=is_head_down)
+        phone_active = self.phone_fusion.process_frame(
+            timestamp=now,
+            phone_detected=phone_detected,
+            phone_confidence=phone_confidence,
+            head_down=is_head_down,
+            hand_near_phone=hand_near_phone,
+            present=present
+        )
+        self.break_tracker.update(timestamp=now, present=present)
+        self.current_work_state = self.work_state_engine.update(
+            timestamp=now,
+            present=present,
+            attention=attention_state,
+            app_category=app_category,
+            idle_seconds=idle_seconds,
+            phone_active=phone_active,
+            signals_reliable=self.camera_available
+        )
+        self.current_activity = self.current_work_state.value
+        if self.focus_mode.is_active:
+            self.focus_mode.update(now)
+
     def set_camera_availability(self, available: bool) -> None:
         """Updates camera hardware availability status."""
         self.camera_available = available
@@ -343,7 +478,9 @@ class DeskSenseApp:
             current_activity=self.current_activity,
             session_duration_sec=self.get_session_duration(),
             is_paused=(self.monitoring_state == MonitoringState.PAUSED),
-            pause_remaining_sec=self.pause_remaining_sec
+            pause_remaining_sec=self.pause_remaining_sec,
+            phone_active=self.phone_fusion.is_phone_active,
+            work_state=self.current_work_state.value
         )
         return {
             **metrics_data,

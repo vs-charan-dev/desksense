@@ -1,0 +1,56 @@
+================================================================================
+  DESKSENSE — APPLICATION RUN COMMANDS
+================================================================================
+
+OPTION 1: LIVE WEBCAM HUD & VISION PROTOTYPE
+--------------------------------------------------------------------------------
+Runs real-time camera tracking with on-screen HUD (posture, head pose, FPS, presence).
+
+Command:
+  & "C:\Users\venka\.venv\Scripts\python.exe" cv_prototype.py
+
+Interactive Keys:
+  [c] -> Trigger 10-second calibration
+  [r] -> Reset calibration profile
+  [q] -> Quit preview
+
+To run with mock frames (no camera needed):
+  & "C:\Users\venka\.venv\Scripts\python.exe" cv_prototype.py --mock
+
+
+================================================================================
+OPTION 2: FULL DESKTOP APPLICATION & DASHBOARD UI
+--------------------------------------------------------------------------------
+Runs the complete host controller, background engines, and interactive React UI.
+
+Step 1: Start the Backend & Local API Server (Terminal 1)
+---------------------------------------------------------
+  & "C:\Users\venka\.venv\Scripts\python.exe" main.py
+
+  (Starts the local host and embedded API server at http://127.0.0.1:8765)
+  Optional flags:
+    --port 8765     (Custom port, default 8765 matches UI)
+    --mock          (Run with synthetic test frames instead of live webcam)
+    --widget        (Enable floating status pill widget)
+
+Step 2: Start the Dashboard UI (Terminal 2)
+-------------------------------------------
+  cd ui
+  npm run dev
+
+  Open your browser to:
+  http://localhost:5173
+
+
+================================================================================
+GLOBAL SHORTCUTS & SYSTEM INTEGRATION
+================================================================================
+  Ctrl + Shift + P  -> Toggle monitoring Pause (15m) / Resume
+
+
+================================================================================
+RUNNING AUTOMATED TEST SUITE (PHASES 0 TO 4)
+================================================================================
+To verify all 80 automated integration tests:
+  & "C:\Users\venka\.venv\Scripts\python.exe" -m unittest discover -s tests/integration -p "test_*.py" -v
+================================================================================

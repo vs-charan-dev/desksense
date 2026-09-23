@@ -106,6 +106,12 @@ class DashboardService:
             distribution_total = 0.0
 
         # Status banners and notifications for empty/error states (P3-10)
+        phone_summary = self.db.get_phone_summary()
+        estimated_phone_sec = phone_summary["estimated_phone_usage"]
+        breaks = self.db.get_breaks()
+        break_count = len(breaks)
+        total_break_sec = sum(b["duration"] for b in breaks)
+
         alerts = []
         if db_error:
             alerts.append({"type": "error", "message": db_error})
@@ -127,6 +133,12 @@ class DashboardService:
                 "active_time_formatted": self.format_duration(active_time),
                 "posture_score": posture_score,
                 "posture_score_formatted": f"{int(round(posture_score))}%",
+                "estimated_phone_usage_sec": estimated_phone_sec,
+                "estimated_phone_usage_formatted": self.format_duration(estimated_phone_sec),
+                "estimated_phone_sessions": phone_summary["estimated_sessions"],
+                "break_count": break_count,
+                "total_break_sec": total_break_sec,
+                "total_break_formatted": self.format_duration(total_break_sec),
             },
             "posture_distribution": {
                 "good": {"seconds": good_sec, "percentage": pct_good, "formatted": f"{pct_good}%"},
@@ -148,6 +160,8 @@ class DashboardService:
         current_activity: str,
         session_duration_sec: float,
         is_paused: bool = False,
+        phone_active: bool = False,
+        work_state: Optional[str] = None,
         pause_remaining_sec: float = 0.0
     ) -> Dict[str, Any]:
         """P3-09: Real-time update payload for live status indicator and timer."""
@@ -157,6 +171,9 @@ class DashboardService:
         if is_paused:
             status_label = f"Paused ({self.format_duration(pause_remaining_sec)} remaining)"
             status_category = "paused"
+        elif phone_active:
+            status_label = "Using Phone (Estimated)"
+            status_category = "phone"
         elif current_posture == "SLOUCHING":
             status_label = "Slouching"
             status_category = "warning"
@@ -180,6 +197,8 @@ class DashboardService:
             "posture": current_posture,
             "attention": current_attention,
             "activity": current_activity,
+            "phone_active": phone_active,
+            "work_state": work_state or current_activity,
             "status_label": status_label,
             "status_category": status_category,
             "session_duration_sec": session_duration_sec,

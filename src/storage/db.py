@@ -75,6 +75,40 @@ CREATE TABLE IF NOT EXISTS daily_summary (
     updated_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS phone_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    duration INTEGER NOT NULL,
+    confidence REAL NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS breaks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    duration INTEGER NOT NULL,
+    break_type TEXT DEFAULT 'automatic',
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS work_state_intervals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    state TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    duration INTEGER NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_phone_sessions_time ON phone_sessions(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_breaks_time ON breaks(start_time, end_time);
+CREATE INDEX IF NOT EXISTS idx_work_state_time ON work_state_intervals(start_time, end_time);
+
 CREATE INDEX IF NOT EXISTS idx_posture_time ON posture_events(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_attention_time ON attention_events(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_app_usage_time ON app_usage(start_time, end_time);
@@ -387,6 +421,97 @@ class DatabaseEngine:
                 "posture_breakdown": posture_durations,
                 "attention_breakdown": attn_durations,
             }
+
+    def log_phone_session(
+        self,
+        start_time: str,
+        end_time: str,
+        duration: int,
+        confidence: float,
+        session_id: Optional[str] = None,
+    ) -> int:
+        """Stores one estimated phone usage session."""
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "INSERT INTO phone_sessions (session_id, start_time, end_time, duration, confidence) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, start_time, end_time, duration, confidence),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def get_phone_sessions(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetches stored phone sessions."""
+        with self.get_connection() as conn:
+            if session_id:
+                cur = conn.execute("SELECT * FROM phone_sessions WHERE session_id = ? ORDER BY id ASC", (session_id,))
+            else:
+                cur = conn.execute("SELECT * FROM phone_sessions ORDER BY id ASC")
+            return [dict(r) for r in cur.fetchall()]
+
+    def get_phone_summary(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Aggregates phone sessions.
+        Strictly labeled as 'estimated phone usage' per requirements.
+        """
+        sessions = self.get_phone_sessions(session_id)
+        total_seconds = sum(s["duration"] for s in sessions)
+        count = len(sessions)
+        longest = max((s["duration"] for s in sessions), default=0)
+        avg = int(round(total_seconds / count)) if count > 0 else 0
+
+        return {
+            "estimated_phone_usage": total_seconds,
+            "estimated_sessions": count,
+            "longest_session": longest,
+            "average_session": avg,
+            "wording": "estimated phone usage",
+        }
+
+    def log_break(
+        self,
+        start_time: str,
+        end_time: str,
+        duration: int,
+        break_type: str = "automatic",
+        session_id: Optional[str] = None,
+    ) -> int:
+        """Stores one break interval."""
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "INSERT INTO breaks (session_id, start_time, end_time, duration, break_type) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, start_time, end_time, duration, break_type),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def get_breaks(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetches stored breaks."""
+        with self.get_connection() as conn:
+            if session_id:
+                cur = conn.execute("SELECT * FROM breaks WHERE session_id = ? ORDER BY id ASC", (session_id,))
+            else:
+                cur = conn.execute("SELECT * FROM breaks ORDER BY id ASC")
+            return [dict(r) for r in cur.fetchall()]
+
+    def log_work_state_interval(
+        self,
+        state: str,
+        start_time: str,
+        end_time: str,
+        duration: int,
+        session_id: Optional[str] = None,
+    ) -> int:
+        """Stores one non-overlapping work state interval."""
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "INSERT INTO work_state_intervals (session_id, state, start_time, end_time, duration) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, state, start_time, end_time, duration),
+            )
+            conn.commit()
+            return cur.lastrowid
 
     def close(self) -> None:
         self.flush_posture_interval()
