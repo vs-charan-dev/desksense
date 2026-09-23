@@ -95,7 +95,7 @@ def main():
             res = vision_core.process_frame(frame_rgb, camera_available=True)
             poll_res = app.activity_tracker.poll()
             proc = poll_res.get("application", "Desktop")
-            category = categorize_app(proc)
+            category = app.app_classifier.classify(proc)
             idle_sec = poll_res.get("idle_duration_seconds", 0.0)
 
             # Record closed app interval if switched
@@ -118,6 +118,10 @@ def main():
                 phone_res = phone_detector.detect(frame_rgb)
                 phone_active_detected = phone_res.detected
                 phone_conf = phone_res.confidence
+
+            # Phase 5 focus tracking
+            if app.current_work_state:
+                app.focus_tracker.update(now, app.current_work_state)
 
             app.record_observation_extended(
                 posture_state=res.get("posture", "UNKNOWN"),

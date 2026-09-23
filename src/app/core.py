@@ -1,3 +1,7 @@
+from src.system.app_classifier import AppClassifier
+from src.system.focus_tracker import FocusTracker
+from src.system.timeline import TimelineBuilder
+from src.system.summary_engine import DailySummaryEngine
 """
 DeskSense Main Application Core & Host Controller (Phase 3)
 Coordinates Desktop Shell lifecycle, Tray operations, Global Hotkey,
@@ -146,6 +150,11 @@ class DeskSenseApp:
         )
         self.focus_mode = FocusModeController(phone_fusion=self.phone_fusion)
         self.current_work_state = WorkState.UNKNOWN
+
+        # Phase 5: App Classifier, Focus Tracker, Timeline & Daily Summary
+        self.app_classifier = AppClassifier(db=self.db)
+        self.focus_tracker = FocusTracker(db=self.db)
+        self.daily_summary_engine = DailySummaryEngine()
 
 
     # ---------------- Window & Lifecycle Management (P3-01) ----------------
@@ -482,9 +491,49 @@ class DeskSenseApp:
             phone_active=self.phone_fusion.is_phone_active,
             work_state=self.current_work_state.value
         )
+        # Phase 5 Aggregations: Timeline & Focus Totals
+        intervals = self.db.get_work_state_intervals()
+        t_start, t_end = self.dashboard_service.get_day_boundaries(target_date)
+        timeline_builder = TimelineBuilder(day_start=t_start, day_end=t_end)
+        timeline_segments = timeline_builder.build_timeline(intervals)
+
+        focus_totals = self.focus_tracker.get_focus_totals()
+        if not focus_totals["sessions"] and intervals:
+            focus_totals = FocusTracker.calculate_totals_from_intervals(intervals)
+
+        # Phone summary
+        phone_summary = self.db.get_phone_summary()
+        breaks = self.db.get_breaks()
+
+        # Daily summary & score
+        today_str = target_date or datetime.datetime.now().strftime("%Y-%m-%d")
+        summary_payload = self.daily_summary_engine.generate_daily_summary(
+            date_str=today_str,
+            focus_seconds=focus_totals.get("total_focus_time", 0),
+            desk_seconds=metrics_data["metrics"].get("desk_time_sec", 0.0),
+            away_seconds=metrics_data["metrics"].get("away_time_sec", 0.0),
+            phone_seconds=phone_summary.get("estimated_phone_usage", 0),
+            posture_score=metrics_data["metrics"].get("posture_score", 100.0),
+            break_count=len(breaks),
+            longest_focus_seconds=focus_totals.get("longest_session", 0),
+        )
+
+        # Category rules
+        category_rules = self.db.get_category_rules()
+
         return {
             **metrics_data,
             "live": live_state,
+            "timeline": [s.to_dict() for s in timeline_segments],
+            "focus": focus_totals,
+            "phone_dashboard": phone_summary,
+            "presence_dashboard": {
+                "desk_time_sec": metrics_data["metrics"].get("desk_time_sec", 0.0),
+                "away_time_sec": metrics_data["metrics"].get("away_time_sec", 0.0),
+                "breaks": breaks,
+            },
+            "summary": summary_payload,
+            "category_rules": category_rules,
             "window_visible": self.window_visible,
             "active_view": self.active_view,
             "widget": self.widget.to_dict(),

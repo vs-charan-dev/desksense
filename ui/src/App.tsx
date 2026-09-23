@@ -6,6 +6,9 @@ import { CalibrationWizardModal } from './components/CalibrationWizardModal';
 import { LiveStatusWidget } from './components/LiveStatusWidget';
 import { SettingsModal } from './components/SettingsModal';
 import { AlertBannerList } from './components/AlertBannerList';
+import { TimelineVisualizer } from './components/TimelineVisualizer';
+import { FocusDashboard } from './components/FocusDashboard';
+import { CategorySettingsModal } from './components/CategorySettingsModal';
 import { DashboardData, CalibrationWizardStatus, WidgetConfig } from './types';
 
 const DEFAULT_DASHBOARD: DashboardData = {
@@ -69,6 +72,7 @@ export const App: React.FC = () => {
   const [data, setData] = useState<DashboardData>(DEFAULT_DASHBOARD);
   const [wizard, setWizard] = useState<CalibrationWizardStatus>(DEFAULT_WIZARD);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [widgetConfig, setWidgetConfig] = useState<WidgetConfig>(DEFAULT_DASHBOARD.widget);
 
   const fetchDashboard = useCallback(async () => {
@@ -217,6 +221,36 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleAddCategoryRule = async (pattern: string, ruleType: 'process' | 'title', category: string) => {
+    try {
+      const res = await fetch('http://127.0.0.1:8765/api/categories/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pattern, rule_type: ruleType, category }),
+      });
+      if (res.ok) {
+        fetchDashboard();
+      }
+    } catch {
+      // Offline
+    }
+  };
+
+  const handleDeleteCategoryRule = async (ruleId: number, pattern: string, ruleType: 'process' | 'title') => {
+    try {
+      const res = await fetch('http://127.0.0.1:8765/api/categories/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rule_id: ruleId, pattern, rule_type: ruleType }),
+      });
+      if (res.ok) {
+        fetchDashboard();
+      }
+    } catch {
+      // Offline
+    }
+  };
+
   const handleUpdateWidgetConfig = async (newConfig: Partial<WidgetConfig>) => {
     const updated = { ...widgetConfig, ...newConfig };
     setWidgetConfig(updated);
@@ -251,6 +285,16 @@ export const App: React.FC = () => {
           onStartCalibration={handleStartCalibration}
         />
 
+        {/* Phase 5 Interactive Day Timeline */}
+        <TimelineVisualizer timeline={data.timeline} />
+
+        {/* Phase 5 Focus & Phone Dashboards */}
+        <FocusDashboard
+          focus={data.focus}
+          phone={data.phone_dashboard}
+          summary={data.summary}
+        />
+
         {/* Daily Overview Metric Cards */}
         <DailyOverview metrics={data.metrics} />
 
@@ -271,6 +315,12 @@ export const App: React.FC = () => {
               <span className="font-semibold text-slate-300">Attention:</span>{' '}
               <span className="font-mono text-emerald-300">{data.live.attention}</span>
             </div>
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs transition flex items-center gap-1.5"
+            >
+              <span>App Categories</span>
+            </button>
           </div>
           <div className="text-right">
             <span>Global Hotkey: </span>
@@ -296,6 +346,15 @@ export const App: React.FC = () => {
         onFinish={handleFinishCalibration}
         onRetry={handleRetryCalibration}
         onCancel={handleCancelCalibration}
+      />
+
+      {/* Category Settings Modal */}
+      <CategorySettingsModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        rules={data.category_rules}
+        onAddRule={handleAddCategoryRule}
+        onDeleteRule={handleDeleteCategoryRule}
       />
 
       {/* Settings Modal */}

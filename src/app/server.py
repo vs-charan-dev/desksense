@@ -64,6 +64,18 @@ class DeskSenseAPIHandler(BaseHTTPRequestHandler):
         elif path == "/api/widget":
             self._send_json(app.widget.to_dict())
 
+        elif path == "/api/timeline":
+            dash = app.get_dashboard_data()
+            self._send_json({"timeline": dash.get("timeline", [])})
+
+        elif path == "/api/categories":
+            rules = app.db.get_category_rules()
+            self._send_json({"rules": rules})
+
+        elif path == "/api/summary":
+            dash = app.get_dashboard_data()
+            self._send_json(dash.get("summary", {}))
+
         elif path == "/api/health":
             self._send_json({"status": "HEALTHY", "is_running": app.is_running})
 
@@ -150,6 +162,20 @@ class DeskSenseAPIHandler(BaseHTTPRequestHandler):
                 else:
                     app.widget.disable()
             self._send_json(app.widget.to_dict())
+
+        elif path == "/api/categories/add":
+            pattern = post_data.get("pattern", "")
+            rule_type = post_data.get("rule_type", "process")
+            category = post_data.get("category", "productive")
+            rule_id = app.app_classifier.add_rule(pattern, rule_type, category)
+            self._send_json({"status": "ok", "rule_id": rule_id, "rules": app.db.get_category_rules()})
+
+        elif path == "/api/categories/delete":
+            rule_id = int(post_data.get("rule_id", 0))
+            pattern = post_data.get("pattern", "")
+            rule_type = post_data.get("rule_type", "process")
+            success = app.app_classifier.delete_rule(pattern, rule_type, rule_id=rule_id)
+            self._send_json({"status": "ok" if success else "not_found", "rules": app.db.get_category_rules()})
 
         elif path == "/api/window/close":
             # Intercept close

@@ -105,6 +105,17 @@ CREATE TABLE IF NOT EXISTS work_state_intervals (
     FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS category_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pattern TEXT NOT NULL,
+    rule_type TEXT NOT NULL,
+    category TEXT NOT NULL,
+    is_user_override INTEGER DEFAULT 1,
+    created_at REAL NOT NULL,
+    UNIQUE(pattern, rule_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_rules_pattern ON category_rules(pattern, rule_type);
 CREATE INDEX IF NOT EXISTS idx_phone_sessions_time ON phone_sessions(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_breaks_time ON breaks(start_time, end_time);
 CREATE INDEX IF NOT EXISTS idx_work_state_time ON work_state_intervals(start_time, end_time);
@@ -512,6 +523,50 @@ class DatabaseEngine:
             )
             conn.commit()
             return cur.lastrowid
+
+    def get_work_state_intervals(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetches stored work state intervals."""
+        with self.get_connection() as conn:
+            if session_id:
+                cur = conn.execute("SELECT * FROM work_state_intervals WHERE session_id = ? ORDER BY id ASC", (session_id,))
+            else:
+                cur = conn.execute("SELECT * FROM work_state_intervals ORDER BY id ASC")
+            return [dict(r) for r in cur.fetchall()]
+
+    def insert_category_rule(
+        self,
+        pattern: str,
+        rule_type: str,
+        category: str,
+        is_user_override: bool = True,
+    ) -> int:
+        """Inserts or replaces an app category rule."""
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "INSERT OR REPLACE INTO category_rules (pattern, rule_type, category, is_user_override, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (pattern.lower().strip(), rule_type.lower().strip(), category.lower().strip(), 1 if is_user_override else 0, datetime.datetime.now().timestamp()),
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def get_category_rules(self) -> List[Dict[str, Any]]:
+        """Fetches all stored app category rules."""
+        with self.get_connection() as conn:
+            cur = conn.execute("SELECT * FROM category_rules ORDER BY is_user_override DESC, id ASC")
+            return [dict(r) for r in cur.fetchall()]
+
+    def delete_category_rule(self, rule_id: int) -> bool:
+        """Deletes a category rule by ID."""
+        with self.get_connection() as conn:
+            cur = conn.execute("DELETE FROM category_rules WHERE id = ?", (rule_id,))
+            conn.commit()
+            return cur.rowcount > 0
+
+    def clear_category_rules(self) -> None:
+        with self.get_connection() as conn:
+            conn.execute("DELETE FROM category_rules")
+            conn.commit()
 
     def close(self) -> None:
         self.flush_posture_interval()

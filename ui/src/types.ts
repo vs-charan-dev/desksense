@@ -71,6 +71,11 @@ export interface DashboardData {
   window_visible: boolean;
   active_view: 'dashboard' | 'calibration' | 'settings';
   widget: WidgetConfig;
+  timeline?: TimelineSegment[];
+  focus?: FocusTotals;
+  phone_dashboard?: PhoneDashboardSummary;
+  summary?: DailySummaryData;
+  category_rules?: CategoryRule[];
 }
 
 export interface WidgetConfig {
@@ -93,4 +98,65 @@ export interface CalibrationWizardStatus {
   min_required_samples: number;
   failure_reason: string | null;
   has_profile: boolean;
+}
+
+export interface TimelineSegment {
+  start_time: number;
+  end_time: number;
+  start_time_str: string;
+  end_time_str: string;
+  duration: number;
+  state: string;
+  label: string;
+  color: string;
+  category: string;
+}
+
+export interface FocusTotals {
+  total_focus_time: number;
+  session_count: number;
+  longest_session: number;
+  average_session: number;
+  distraction_count: number;
+}
+
+export interface PhoneDashboardSummary {
+  estimated_phone_usage: number;
+  estimated_sessions: number;
+  longest_session: number;
+  average_session: number;
+  wording: string;
+}
+
+export interface CategoryRule {
+  id: number;
+  pattern: string;
+  rule_type: 'process' | 'title';
+  category: string;
+  is_user_override: number;
+}
+
+export interface DailySummaryData {
+  date: string;
+  metrics: {
+    focus_seconds: number;
+    desk_seconds: number;
+    away_seconds: number;
+    estimated_phone_seconds: number;
+    posture_score: number;
+    break_count: number;
+    longest_focus_seconds: number;
+  };
+  score: {
+    daily_wellness_score: number;
+    components: {
+      focus: number;
+      posture: number;
+      breaks: number;
+      phone: number;
+      consistency: number;
+    };
+  };
+  insights: string[];
+  wording_disclaimer: string;
 }
